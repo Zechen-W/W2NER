@@ -1,1 +1,7 @@
 .idea/
+/log/
+/cache/
+/__pycache__/
+.gitignore
+/data/
+/output/

@@ -8,6 +8,8 @@ import torch.nn as nn
 import transformers
 from sklearn.metrics import precision_recall_fscore_support, f1_score
 from torch.utils.data import DataLoader
+from tqdm import tqdm
+import pdb
 
 import config
 import data_loader
@@ -24,10 +26,10 @@ class Trainer(object):
         other_params = list(set(self.model.parameters()) - bert_params)
         no_decay = ['bias', 'LayerNorm.weight']
         params = [
-            {'params': [p for n, p in model.bert.named_parameters() if not any(nd in n for nd in no_decay)],
+            {'params': [p for n, p in self.model.bert.named_parameters() if not any(nd in n for nd in no_decay)],
              'lr': config.bert_learning_rate,
              'weight_decay': config.weight_decay},
-            {'params': [p for n, p in model.bert.named_parameters() if any(nd in n for nd in no_decay)],
+            {'params': [p for n, p in self.model.bert.named_parameters() if any(nd in n for nd in no_decay)],
              'lr': config.bert_learning_rate,
              'weight_decay': 0.0},
             {'params': other_params,
@@ -46,12 +48,19 @@ class Trainer(object):
         pred_result = []
         label_result = []
 
-        for i, data_batch in enumerate(data_loader):
+        for data_batch in tqdm(data_loader):
             data_batch = [data.cuda() for data in data_batch[:-1]]
 
             bert_inputs, grid_labels, grid_mask2d, pieces2word, dist_inputs, sent_length = data_batch
 
-            outputs = model(bert_inputs, grid_mask2d, dist_inputs, pieces2word, sent_length)
+            try:
+                outputs = self.model(bert_inputs, grid_mask2d, dist_inputs, pieces2word, sent_length)
+            except Exception as e:
+                logger.info(e)
+                logger.info(f'data_batch:\n{data_batch}')
+                continue
+
+                
 
             grid_mask2d = grid_mask2d.clone()
             loss = self.criterion(outputs[grid_mask2d], grid_labels[grid_mask2d])
@@ -100,7 +109,7 @@ class Trainer(object):
                 data_batch = [data.cuda() for data in data_batch[:-1]]
                 bert_inputs, grid_labels, grid_mask2d, pieces2word, dist_inputs, sent_length = data_batch
 
-                outputs = model(bert_inputs, grid_mask2d, dist_inputs, pieces2word, sent_length)
+                outputs = self.model(bert_inputs, grid_mask2d, dist_inputs, pieces2word, sent_length)
                 length = sent_length
 
                 grid_mask2d = grid_mask2d.clone()
@@ -158,7 +167,7 @@ class Trainer(object):
                 data_batch = [data.cuda() for data in data_batch[:-1]]
                 bert_inputs, grid_labels, grid_mask2d, pieces2word, dist_inputs, sent_length = data_batch
 
-                outputs = model(bert_inputs, grid_mask2d, dist_inputs, pieces2word, sent_length)
+                outputs = self.model(bert_inputs, grid_mask2d, dist_inputs, pieces2word, sent_length)
                 length = sent_length
 
                 grid_mask2d = grid_mask2d.clone()
@@ -205,7 +214,7 @@ class Trainer(object):
         logger.info("\n{}".format(table))
 
         with open(config.predict_path, "w", encoding="utf-8") as f:
-            json.dump(result, f, ensure_ascii=False)
+            json.dump(result, f, ensure_ascii=False, indent=4)
 
         return e_f1
 
@@ -219,8 +228,8 @@ class Trainer(object):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='./config/conll03.json')
-    parser.add_argument('--save_path', type=str, default='./model.pt')
-    parser.add_argument('--predict_path', type=str, default='./output.json')
+    parser.add_argument('--save_path', type=str)
+    parser.add_argument('--predict_path', type=str)
     parser.add_argument('--device', type=int, default=0)
 
     parser.add_argument('--dist_emb_size', type=int)
@@ -264,9 +273,9 @@ if __name__ == '__main__':
         torch.cuda.set_device(args.device)
 
     # random.seed(config.seed)
-    # np.random.seed(config.seed)
-    # torch.manual_seed(config.seed)
-    # torch.cuda.manual_seed(config.seed)
+    np.random.seed(config.seed)
+    torch.manual_seed(config.seed)
+    torch.cuda.manual_seed(config.seed)
     # torch.backends.cudnn.benchmark = False
     # torch.backends.cudnn.deterministic = True
 
@@ -282,7 +291,6 @@ if __name__ == '__main__':
                    drop_last=i == 0)
         for i, dataset in enumerate(datasets)
     )
-
     updates_total = len(datasets[0]) // config.batch_size * config.epochs
 
     logger.info("Building Model")
@@ -291,6 +299,7 @@ if __name__ == '__main__':
     model = model.cuda()
 
     trainer = Trainer(model)
+    del model
 
     best_f1 = 0
     best_test_f1 = 0

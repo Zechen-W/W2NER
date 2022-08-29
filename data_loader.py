@@ -205,3 +205,36 @@ def load_data_bert(config):
     test_dataset = RelationDataset(*process_bert(test_data, tokenizer, vocab))
     return (train_dataset, dev_dataset, test_dataset), (train_data, dev_data, test_data)
 
+def my_load_data_bert(config, index):
+    with open('./data/{}/test{}.json'.format(config.dataset, index), 'r', encoding='utf-8') as f:
+        test_data = json.load(f)
+    
+    tokenizer = AutoTokenizer.from_pretrained(config.bert_name, cache_dir="./cache/")
+
+    config.logger.info(f"-----------------generating dataset with index {index}-----------------")
+
+    if index == 0:
+        with open('./data/{}/train.json'.format(config.dataset), 'r', encoding='utf-8') as f:
+            train_data = json.load(f)
+        with open('./data/{}/dev.json'.format(config.dataset), 'r', encoding='utf-8') as f:
+            dev_data = json.load(f)
+
+        vocab = Vocabulary()
+        train_ent_num = fill_vocab(vocab, train_data)
+        dev_ent_num = fill_vocab(vocab, dev_data)
+        test_ent_num = fill_vocab(vocab, json.load(open(f"./data/{config.dataset}/test_all.json", encoding="utf8")))
+
+        # table = pt.PrettyTable([config.dataset, 'sentences', 'entities'])
+        # table.add_row(['train', len(train_data), train_ent_num])
+        # table.add_row(['dev', len(dev_data), dev_ent_num])
+        # table.add_row(['test', len(test_data), test_ent_num])
+        
+        # config.logger.info("\n{}".format(table))
+
+        config.label_num = len(vocab.label2id)
+        config.vocab = vocab
+
+    # train_dataset = RelationDataset(*process_bert(train_data, tokenizer, vocab))
+    # dev_dataset = RelationDataset(*process_bert(dev_data, tokenizer, vocab))
+    test_dataset = RelationDataset(*process_bert(test_data, tokenizer, config.vocab))
+    return test_dataset, test_data
